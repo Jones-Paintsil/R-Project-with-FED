@@ -1,0 +1,13 @@
+Risky,full_names,N,mean,Std.Dev,Min,Pctl25,median,Pctl75,Max
+safe,Busisness & Equipment,252,0.03,0.58,-2.3,-0.33,0.03,0.4,1.8
+safe,Chemicals & Allied product,252,-0.01,0.64,-1.88,-0.44,-0.01,0.38,1.79
+safe,Consumer Non Durable,252,-0.04,0.65,-1.61,-0.49,-0.04,0.35,1.97
+safe,Other,252,0,0.47,-1.23,-0.29,-0.05,0.28,1.43
+safe,Shops,252,-0.02,0.49,-2.2,-0.32,-0.03,0.26,1.84
+safe,Telecommunication,252,-0.11,0.87,-3.49,-0.54,-0.16,0.37,3.22
+Risky,Consumer Durables,252,0.08,2.04,-8.23,-0.99,0.04,1.08,9.8
+Risky,Energy,252,0.12,1.71,-3.92,-1.01,-0.02,1.18,4.54
+Risky,"Healthcare,Medical Equipment",252,-0.03,0.64,-1.54,-0.39,-0.07,0.33,2.26
+Risky,Manufacturing,252,0,0.59,-1.64,-0.37,-0.03,0.39,2.17
+Risky,Money,252,0.03,0.79,-2.34,-0.43,-0.04,0.49,3.39
+Risky,Utilities,252,-0.01,0.93,-2.87,-0.72,0,0.58,2.91

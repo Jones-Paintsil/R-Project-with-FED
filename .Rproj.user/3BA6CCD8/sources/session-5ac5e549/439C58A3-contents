@@ -1,0 +1,45 @@
+# #############################################################################
+
+#                       Using Stargazer for magic output
+
+# #############################################################################
+stargazer_tables <- list()
+
+# Using for loop to run linear regression for each industry
+for (name in unique_names) {
+  mod2 <- regression_results[[name]]
+  
+  # Make results compatible for stargazer package
+  table <- stargazer(mod2, type="text", align = TRUE, title = name, header = FALSE, append=TRUE)  
+  
+  # Store the stargazer table in the list
+  stargazer_tables[[name]] <- table
+}
+
+######################################################################3
+stargazer(
+  regression_results,
+  title = "Regression Results",
+  align = TRUE,
+  #type = "text",
+  out = "regression_table.html")
+
+#########################################################################
+
+# Get unique values of full_names
+unique_names <- unique(dat1$industry)
+
+# Loop through unique names and perform linear regression for each group
+for (name in unique_names) {
+  dat1_reg <- dat1 %>% filter(industry == name)
+  
+  # Linear regression for the current group
+  mod_name <- lm(excess_return ~ `Mkt-RF` + SMB + HML + RMW + CMA, data = dat1_reg)
+  
+  # Create a variable name dynamically and assign the model to it
+  assign(paste0("mod_", name), mod_name)
+}
+
+# Accessing a specific model
+stargazer(mod_BusEq, mod_Chems, type="text", align = TRUE, 
+          title = name, header = TRUE, append=TRUE)  

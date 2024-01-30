@@ -1,0 +1,46 @@
+--------------------------------------------------------------------------------
+#                                  Project 1
+# Name: Jones Arkoh Paintsil
+# Date: 09/09/2023
+# ECON181/ECOG315
+#-------------------------------------------------------------------------------
+
+
+#Install useful packages for the project
+install.packages("readr")
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("lubridate")
+install.packages("tseries")
+#Loading packages
+library(readr)
+library(tidyverse)
+library(dplyr)
+library(tseries)
+# Importing the data
+?read_csv
+project_df <- read_csv("industry_portfolios_daily.csv")
+attach(project_df)
+View(project_df)
+str(project_df)
+head(project_df)
+tail(project_df)
+
+project_df$Date <- as.Date(project_df$Date)
+
+plot.ts(NoDur)
+?plot.ts
+plot(ts(NoDur, start = c(1926,1), end = (2022), frequency = 1), 
+     ylab="NoDur", col=("blue"))
+
+ggplot(data =project_df, aes(x=as.Date(Date) , y=variable) )             +
+  ylab('Daily returns on 12 industry portfolios')                                 +
+  geom_line(aes(y=NoDur),linewidth=1, alpha=.8,na.rm = TRUE)   +
+  geom_line(aes(y=Manuf), linewidth=1, alpha=.8, na.rm = TRUE)   +
+  theme(legend.position=c(.1,.85) +
+  scale_x_continuous(limits = c(1926,2022),breaks = scales::breaks_width(20)) )  
+        
+
+
+
+?geom_line

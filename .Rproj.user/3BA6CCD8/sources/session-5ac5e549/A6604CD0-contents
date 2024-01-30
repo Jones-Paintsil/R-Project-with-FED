@@ -1,0 +1,101 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##################################################################################
+# Modification
+################################################################################
+
+
+
+# Create a list to store the individual models
+model_list <- list()
+
+# Using for loop to run linear regression for each industry
+for (name in unique_names) {
+  mod2 <- regression_results[[name]]
+  
+  # Store the model in the list
+  model_list[[name]] <- mod2
+}
+
+# Pass the list of models to stargazer in a single call
+stargazer::stargazer(do.call(c, model_list))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#################################################################################
+#                           Coefficient Plots
+################################################################################
+
+# Create a Word document
+doc <- read_docx()
+
+# Loop through your ggplot2 plots and save them as image files
+for (name in unique_names) {
+  mod2 <- regression_results[[name]]
+  
+  # Extract the coefficients into a data frame
+  coef_data <- tidy(mod2)
+  
+  # Calculate p-values for each coefficient
+  coef_data$p_value <- summary(mod2)$coefficients[, "Pr(>|t|)"]
+  
+  # Create a new column to convert p_value to "True" or "False"
+  coef_data <- coef_data %>% 
+    mutate(pval = if_else(p_value < 0.05, "True", "False"))
+  
+  # Create a ggplot2 plot of coefficients with significance markers
+  p <- ggplot(coef_data, aes(x = term, y = estimate, color = pval)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = estimate - std.error,
+                      ymax = estimate + std.error), width = 0.2) +
+    geom_text(data = subset(coef_data, pval == "True"), 
+              aes(label = ifelse(p_value < 0.001, "***",
+                                 felse(p_value < 0.01, "**", "*")),
+                  hjust = -0.1, vjust = 0.5)) +
+    labs(title = name, x = "Coefficient", y = "Estimate") +
+    theme_minimal()
+  
+  print(p)
+  
+  ggsave(filename = paste0("plot_", name, ".png"), plot = p, width = 7, height = 5)  
+  
+  doc <- doc %>% body_add_img(src = paste0("plot_", name, ".png"),
+                              width = 6, height = 4)  
+}
+
+print(doc, target = "regression_plots.docx")
+
+

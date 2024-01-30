@@ -1,0 +1,695 @@
+--------------------------------------------------------------------------------
+  #                                  Project 6
+  # Name: Jones Arkoh Paintsil
+  # Date: 10/28/2023
+  # ECOG315
+  #                                   Topic
+  #  Pandemic and Stock Returns: The effects of COVID-19 on industry 
+  #        profitability and investor attitudes towards risk.
+  #-----------------------------------------------------------------------------
+#Install useful packages for the project
+install.packages("readr")
+install.packages("tidyverse")
+install.packages("tibbletime")
+install.packages("vtable")
+install.packages("kableExtra")
+install.packages("rlang")
+install.packages("stargazer")
+install.packages("broom")
+install.packages("webshot2")
+
+
+library(broom)
+library(stargazer)
+library(rlang)
+library(readr)
+library(tidyverse)
+library(tibbletime)
+library(knitr)
+library(kableExtra)
+library(vtable)
+library(webshot2)
+
+# I am using two separate data frame for my project. The first is daily average
+# stock market returns. The second is the returns on the US market portfolio.
+
+# Importing the daily average value-weighted returns
+industry_portfolios <- read_csv("industry_portfolios_daily.csv",show_col_types = FALSE) %>%
+  # turn date from chr format to date format
+  mutate(Date = as.Date(as.character(Date), format = "%Y%m%d")) %>%
+  #format = "%Y%m%d"                  
+  # make year categorical variable
+  mutate(Year = as.numeric(substr(Date, 1, 4))) %>%
+  # subset to 2019:2021
+  filter(Year >= 2019 & Year <= 2021) 
+
+
+# importing the market portfolios
+F_F_Research_Data_5 <- read_csv("F-F_Research_Data_5_Factors_2x3_daily.CSV", 
+                                skip=3,show_col_types = FALSE) %>%
+  # turn date from chr format to date format
+  mutate(Date = as.Date(as.character(Date), format = "%Y%m%d")) %>%
+  # make year categorical variable
+  mutate(Year = as.numeric(substr(Date, 1, 4))) %>%
+  # subset to 2019:2021
+  filter(Year >= 2019 & Year <= 2021) %>% 
+  # I am generating market returns for the US market because I will need this 
+  # variable in computing the abnormal returns for the industries.
+  mutate(mkt = `Mkt-RF` + RF) %>%
+  select(-Year)
+
+
+#           Joining the daily average returns and market returns
+project_df <- industry_portfolios %>% left_join(F_F_Research_Data_5,by="Date")
+
+
+# I am working with 12 industries. Each industry has its daily weighted average
+# returns. Working on it as column variable for each of the 12 industries is tedious
+# and for such reason, I am going to make it longer.
+
+
+# make a subset of the data and make it longer and I am calling it "dat1"
+dat1 <-project_df %>% 
+                  select(Date, Year, NoDur:mkt) %>% 
+                  pivot_longer(cols = NoDur:Other) %>%
+                  rename(industry = name) %>%
+                  arrange(industry) %>% 
+                  rename(average_returns =value) 
+
+# I need to give the industry full names because I will need in the process
+industry_names <- data.frame( industry = c("NoDur", "Durbl", "Manuf", "Enrgy", "Chems", "BusEq", 
+                                           "Telcm", "Utils", "Shops", "Hlth", "Money", "Other"),  
+                              full_names = c("Non Durable", "Durables", "Manufacturing", "Energy", 
+                                             "Chemicals & Apllied product", "Busisness & Equipment", 
+                                             "Telecommunication", "Utilities", "Shops", "Healthcare,Medical Equipment",
+                                             "Finance", "Other"))
+
+dat1 <- dat1 %>% 
+        left_join(industry_names, by =("industry"))
+
+
+
+#--------------------------------------------------------------------------------
+# I need to compute additional variables, for example, the cummulative average
+# returns for each of the industries, abnormal returns etc.
+#-------------------------------------------------------------------------------
+
+dat1  <-  dat1 %>%
+          group_by(industry) %>%
+          mutate(cum_average=cumsum(average_returns)) %>% 
+          mutate(abnorm_returns=average_returns-mkt) %>%
+          mutate(cm_abnorm_returns=cumsum(abnorm_returns)) %>% 
+          mutate(excess_return=(average_returns-RF))
+
+
+#-------------------------------------------------------------------------------
+# The project purpose is to compare the performance of the stock market during the 
+# covid 19 pandemic. One way this is done in financial economics is to compare
+# the standard deviation prior the year of the incident to the returns following 
+# the incident. To this effect, I am going to compare the 2019 standard deviation
+# to the 2020 cumulative abnormal returns and then, compare 2020 standard deviations
+# to the 2021 cumulative abnormal returns. For this reason, I need to compute
+# the standard deviations for each industry for each of the years; 2019, 2020, and 2021.
+
+#-------------------------------------------------------------------------------
+# Computing the standard deviations
+sd_ab <- dat1  %>%
+                  group_by(Year,industry) %>%
+                  summarize(sd=sd(abnorm_returns), .groups = "drop") %>% 
+                  arrange(desc(sd))
+
+# visualization of the standard deviation by year
+# Points
+ggplot(sd_ab,aes(x=industry, y=sd, color=industry)) +
+            geom_point() +
+            facet_wrap(~Year) +
+            geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+            labs(x = "industry", y = "standard devation")
+
+
+# Bars
+ggplot(sd_ab, aes(x = industry, y = sd, fill = industry)) +
+            geom_bar(stat = "identity") +
+            facet_wrap(~Year) +
+            geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+            labs(x = "industry", y = "standard deviation")
+
+
+
+#-------------------------------------------------------------------------------
+# Now, I need to join the standard deviations back to the main data frame and 
+# I am going to call it "dat2"
+#-------------------------------------------------------------------------------
+
+# Joining the standard Deviations
+dat2 <- dat1 %>% 
+  left_join(sd_ab,by=c("Year", "industry"))
+
+
+#                   2019 standard Deviations
+# Let me called it part A; where I am comparing 2019 standard deviations to 2020
+# cumulative abnormal returns. First, I need to filter the standard deviations
+# to 2019. 
+
+sd_2019 <- dat2 %>%
+          filter(Year==2019) %>%
+          select(Date,industry, sd) %>% 
+          group_by(industry) %>% 
+          mutate(id =row_number())
+
+# Similarly, I am filtering the data frame to only 2020 
+s20_cum_av <- dat2 %>%
+              filter(Year ==2020) %>%
+              select(-sd,-Date) %>% 
+              group_by(industry) %>% 
+              mutate(id = row_number())
+
+# I need to join these two data frame. I tried joing it by industry but the 
+# observations became just too many which I suspect something went wrong. Because
+# of that I generated an id, a count for each of the days in 2019/2020 for a 
+# particular industry. I realized that the lenth of days for the 2020 data frame is 
+# longer than that of the 2019 and so to prevent having some few missing observation
+# I matched the 2020 cumulative returns to the 2019 standard deviations.
+
+combined_19_20 <- sd_2019 %>% 
+                  left_join(s20_cum_av,by=c("id","industry"))
+
+
+# Calculating the group variable: risky versus safe. Here, I am generating a 
+# group variable based on the median standard deviations. If a particular industry
+# has a standard deviation above this median value, it is classified as risky, else,
+# is safe.
+
+quantile(combined_19_20$sd)
+combined_19_20 <- combined_19_20 %>%
+                 mutate(risky=ifelse(sd> 0.54, 1, 0))
+
+
+# Test of means   risky versus safe
+# Now, I am performing 2 sample two tail test to compare the difference in
+# cumulative abnormal returns between risky and safe industries.
+
+case1 <- t.test(combined_19_20$cm_abnorm_returns~combined_19_20$risky)
+# Table to store the t-test results
+test_results1 <- data.frame(
+                Variable = "cumulative abnormal Returns",
+                Category = "risky vs safe",
+                t_stat = case1$statistic,
+                p_value = case1$p.value,
+                Mean_Risky = mean(combined_19_20$cm_abnorm_returns[combined_19_20$risky== 1], na.rm = TRUE),
+                Mean_Safe = mean(combined_19_20$cm_abnorm_returns[combined_19_20$risky == 0], na.rm = TRUE))
+
+
+# Using kable to print the output
+kable(test_results1, format = "html") %>%
+  kable_styling()
+
+
+#                        2020 Standard Deviations
+# Repeating the process by comparing 2020 standard deviation to 2021 cumulative 
+# abnormal returns
+sd_2020 <- dat2 %>%
+            filter(Year==2020) %>%
+            select(Date,industry, sd) %>% 
+            group_by(industry) %>% 
+            mutate(id =row_number())
+
+# Similarly, I am filtering the data frame to only 2020 
+s21_cum_av <- dat2 %>%
+              filter(Year ==2021) %>%
+              select(-sd,-Date) %>% 
+              group_by(industry) %>% 
+              mutate(id = row_number())
+
+# Joining the data frame for 2020 sd versus 2021 cumulative abnormal returns
+combined_20_21 <- sd_2020 %>% 
+                  left_join(s21_cum_av,by=c("id","industry"))
+
+quantile(combined_20_21$sd)
+combined_20_21 <- combined_20_21 %>%
+                  mutate(risky=ifelse(sd> 0.87, 1, 0))
+
+
+# Test of means   risky versus safe
+case2 <- t.test(combined_20_21$cm_abnorm_returns~combined_20_21$risky)
+
+# Table to store the t-test results
+test_results2 <- data.frame(
+                Variable = "cumulative abnormal Returns",
+                Category = "risky vs safe",
+                t_stat = case2$statistic,
+                p_value = case2$p.value,
+                Mean_Risky = mean(combined_20_21$cm_abnorm_returns[risky == 1], na.rm = TRUE),
+                Mean_Safe = mean(combined_20_21$cm_abnorm_returns[risky == 0], na.rm = TRUE))
+
+
+# Let me combined the two tail t-test results
+test_combined<- rbind(test_results1, test_results2) %>% 
+                mutate(Year=c(2020,2021))
+
+# Using kable to print the output
+kbl(test_combined, digits = 3) %>% 
+  kable_styling(bootstrap_options = "striped") %>% 
+  add_header_above(c(" " = 1,"Table 2: Two tail test for Cumulative Abnormal Returns: Risky vs. Safe Industries" = ncol(test_combined)))
+
+
+
+
+#### Computing the summary statistics
+# Computing summary statistics
+sss <- combined_19_20 %>%
+      group_by(industry) %>% 
+      select(cm_abnorm_returns,risky,industry)
+
+##############################################################################
+#                                 Part A
+#                                 Question 1 a
+##############################################################################
+# We are to use the vtable package to compute this statistics. Because I made
+# my data frame longer, formatting the table to neat output using the vtable
+# package has proven to be a challenge. For this reason, I am demonstrating that
+# I can use it to compute my statistics as I did in project update 3. But in
+# this one, I am not going to use it for my final display because the table is not
+# neat. in fact, I am submitting late this week just because of that.
+?st
+summary_stats1 <- sss  %>%
+                  filter(risky == 1) %>%
+                  st(out = 'return',group="industry",
+                  group.long =TRUE,add.median = TRUE, digits = 1)
+
+# Okay, the Table 1 doesn't look good because I made the data frame longer. In
+# Project update 3, for safe of just demonstration, I maintain the wider but
+# I needed to compute/mutate many variables and working with 12 dependent variables
+# will be hectic and does, I made it longer.
+
+kbl(summary_stats1, digits = 1) %>% 
+  kable_styling(bootstrap_options = "striped") %>%
+  add_header_above(c(" " = 1, "Table 1: Cumulative Abnormal Returns of Risky and Safe Industries" = ncol(summary_stats1) - 1))
+
+# using the summarize command
+# I am going to use the summarize command to generate the same table as the vtable package
+#
+
+# Risky industries
+summary_stats2 <- combined_19_20 %>%
+                  filter(risky == 1) %>%
+                  group_by(full_names) %>%
+                  summarize(
+                  N = n(),
+                  mean = round(mean(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Std.Dev = round(sd(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Min = round(min(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Pctl25 = round(quantile(cm_abnorm_returns, 0.25, na.rm = TRUE), 2),
+                  median = round(median(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Pctl75 = round(quantile(cm_abnorm_returns, 0.75, na.rm = TRUE), 2),
+                  Max = round(max(cm_abnorm_returns, na.rm = TRUE), 2)) %>% 
+                  mutate(Risky="risky")
+
+
+# Safe industries
+summary_stats3 <- combined_19_20 %>%
+                  filter(risky == 0) %>%
+                  group_by(full_names) %>%
+                  summarize(
+                  N = n(),
+                  mean = round(mean(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Std.Dev = round(sd(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Min = round(min(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Pctl25 = round(quantile(cm_abnorm_returns, 0.25, na.rm = TRUE), 2),
+                  median = round(median(cm_abnorm_returns, na.rm = TRUE), 2),
+                  Pctl75 = round(quantile(cm_abnorm_returns, 0.75, na.rm = TRUE), 2),
+                  Max = round(max(cm_abnorm_returns, na.rm = TRUE), 2)) %>% 
+                  mutate(Risky="safe")
+
+# summary statistics
+# Joining of Risky and Safe industries conditional summary Statistics
+summary_bind <- rbind(summary_stats2, summary_stats3) %>% 
+                relocate('Risky')
+
+# use kable Extra package to display table in graphics window  
+?kbl
+# Writing out the output using the Kable Extra
+
+kbl(summary_bind, digits = 1) %>% 
+  kable_styling(bootstrap_options = "striped") %>%
+  add_header_above(c(" " = 1,"Table 1: Cumulative Abnormal Returns of Risky and Safe Industries" = ncol(summary_bind) - 1))
+
+#                                 Question 2
+
+# Bar graph of the variable used in T-test. Bar graph will be appropriate instead of histogram
+ggplot(combined_19_20, aes(x = industry, y = cm_abnorm_returns, fill =factor(risky))) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~risky) +
+  labs(x = "industry", y = "Cumulative Abnormal Returns")
+
+
+# I want to create a label instead of using zero and one
+fill_color <- scale_fill_manual(values = c("1" = "red", "0" = "blue"),
+                                labels = c("1" = "risky", "0" = "safe"))
+
+
+# Histogram of the variable used in T-test with custom fill scale
+ggplot(combined_19_20, aes(x = industry, y = cm_abnorm_returns, fill = factor(risky))) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~factor(risky)) +
+  labs(x = "industry", y = "Cumulative Abnormal Returns", 
+  title = "Cumulative Abnormal Returns of Risky and Safe Industries in 2020") +
+  fill_color +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+################################################################################
+
+#                         Part B
+################################################################################
+
+
+#                         Test of Means
+# Conducting one sample two tail test for the entire period under study.
+t.test(dat1$average_returns-dat1$mkt) #Test of means
+
+
+# Conducting one sample two tail test for each of the industries
+t_test_results <- dat1 %>%
+                  group_by(industry) %>%
+                  summarize(t_test_result = 
+                  list(broom::tidy(t.test(average_returns, mkt))))
+
+# Extracting the statistics from the t results
+t_test_results <- t_test_results %>%
+                  mutate(t_test_result = map(t_test_result, 
+                  ~ .x[c("estimate", "conf.low", "conf.high", "p.value")]))
+
+
+# Extracting the results to a table
+t_test_results %>%
+                unnest(t_test_result) %>%
+                select(industry, t_statistic 
+                = "estimate", conf.low, conf.high, p.value) %>%
+kable(format = "html", escape = FALSE,digits = 3) %>%
+kable_styling(full_width = FALSE) %>%
+column_spec(2:5)  %>% 
+add_header_above(c(" ", "Table 2: One sample Two Tail T-Test Results for each Industry" = 4))
+
+# Summary statistics for the ungrouped
+summary_ungrouped <- dat1 %>%
+                    group_by(full_names) %>%
+                    summarize(
+                    N = n(),
+                    mean = round(mean(cm_abnorm_returns, na.rm = TRUE), 2),
+                    Std.Dev = round(sd(cm_abnorm_returns, na.rm = TRUE), 2),
+                    Min = round(min(cm_abnorm_returns, na.rm = TRUE), 2),
+                    Pctl25 = round(quantile(cm_abnorm_returns, 0.25, na.rm = TRUE), 2),
+                    median = round(median(cm_abnorm_returns, na.rm = TRUE), 2),
+                    Pctl75 = round(quantile(cm_abnorm_returns, 0.75, na.rm = TRUE), 2),
+                    Max = round(max(cm_abnorm_returns, na.rm = TRUE), 2))  
+
+kbl(summary_ungrouped, digits = 1) %>% 
+  kable_styling(bootstrap_options = "striped")   
+
+
+
+#                 visualization of the cumulative average returns
+ggplot(data=dat1, aes(Date, cum_average, group=industry,
+                  color=industry)) + geom_line() + 
+                 labs(x = "Years", y = "Cumulative Abnormal Returns", 
+                 title = "Cumulative Abnormal Returns") +
+                 theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+
+
+
+
+
+
+#==============================================================================
+#                           Second part of Analysis
+#==============================================================================
+
+#==============================================================================
+
+
+
+###############################################################################
+#                       Regression Analysis
+##############################################################################
+
+#                     Using for loop for the regression
+
+#############################################################################
+# Generating a list to store the results
+regression_results <- list()
+
+# Get unique values of full_names
+unique_names <- unique(dat1$industry)
+
+# Loop through unique names and perform linear regression for each group
+for (name in unique_names) {
+  dat1_reg <- dat1 %>% filter(industry == name)
+  
+# Linear regression for the current group
+mod_name <- lm(excess_return ~ `Mkt-RF` + SMB + HML + 
+                 RMW + CMA, data = dat1_reg)
+  
+  # Assign each results to the regression window
+regression_results[[paste0("mod_", name)]] <- mod_name
+#assign(paste0("mod_", name), mod_name)
+
+}
+
+#############################################################################
+#     Using Stargazer for reporting the Regression output
+#############################################################################
+?stargazer
+attach(regression_results)
+# Reporting the regression output
+# Extracting model names
+model_names <- c("BusEq", "Chems", "Durbl", "Enrgy", "Hlth", "Manuf")
+stargazer(regression_results[1:6],type="text", title.align = "center",
+          title="Fema and French Factor Model",column.labels = model_names)
+
+model_names2=c("Money", "NoDur", "Other", "Shops", "Telcm", "Utils")
+stargazer(regression_results[7:12],type="text", 
+          title="Fema and French Factor Model",column.labels = model_names2)
+
+
+
+###########################################################################
+#                 Generating the Residuals # Abnormal Returns
+###########################################################################
+
+# Generating a list to store the results
+residuals_df <- data.frame()
+
+for (name in unique_names) {
+dat1_reg <- dat1 %>% filter(industry == name)
+
+# Calculating the residuals
+residuals <- residuals(mod_name)
+n         <- length(residuals)
+
+data <- data.frame(Date = dat1_reg$Date,industry = dat1_reg$industry,
+            full_names = rep(name, n), ab_return_res = residuals)
+
+residuals_df <- rbind(residuals_df, data)
+
+}
+
+
+#                 visualization of the Residuals
+
+ggplot(data=residuals_df, aes(Date,ab_return_res, group=industry,
+                      color=industry)) + geom_line() + 
+  labs(x = "Years", y = "Abnormal Returns", 
+       title = "Abnormal Returns") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+################################################################################
+residuals_df <- residuals_df %>% 
+                mutate(Year = as.numeric(substr(Date, 1, 4))) %>%
+                mutate(cm_ab_res=cumsum(ab_return_res))
+
+
+#===============================================================================
+#                 visualization of the Residuals
+#===============================================================================
+
+ggplot(data=residuals_df, aes(Date,cm_ab_res, group=industry,
+                            color=industry)) + geom_line() + 
+                            labs(x = "Years", y = "Abnormal Returns", 
+                            title = "Abnormal Returns using Residual approach") +
+                            theme(plot.title = element_text(hjust = 0.5))
+
+#===============================================================================
+
+#               Computing the standard deviations
+
+#===============================================================================
+sd_ab_res <- residuals_df  %>%
+             group_by(Year,industry) %>%
+             summarize(sd=sd(ab_return_res), .groups = "drop") %>% 
+             arrange(desc(sd))
+
+#===============================================================================
+#             visualization of the standard deviation by year
+#===============================================================================
+ggplot(sd_ab_res,aes(x=industry, y=sd, color=industry)) +
+             geom_point() +
+             facet_wrap(~Year) +
+             geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+             labs(x = "industry", y = "standard devation from residuals")
+
+#===============================================================================
+#                             Bars
+#===============================================================================
+
+ggplot(sd_ab_res, aes(x = industry, y = sd, fill = factor(Year))) +
+              geom_bar(stat="identity") +
+              #facet_wrap(~Year) +
+              geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+              labs(x = "industry", y = "standard deviation from residuals")
+
+
+#===============================================================================
+#                   Joining the standard Deviations
+#===============================================================================
+
+residuals_df <- residuals_df %>% 
+                left_join(sd_ab_res,by=c("Year", "industry"))
+
+#==============================================================================
+#                   2019 standard Deviations
+#============================================================================== 
+
+sd_2019_res  <- residuals_df  %>%
+                filter(Year==2019) %>%
+                select(Date,industry, sd) %>% 
+                group_by(industry) %>% 
+                mutate(id =row_number())
+
+
+#==============================================================================
+# Similarly, I am filtering the data frame to only 2020 
+s20_cum_av_res  <- residuals_df %>%
+               filter(Year ==2020) %>%
+               select(-sd,-Date) %>% 
+               group_by(industry) %>% 
+               mutate(id = row_number())
+
+
+#==============================================================================
+#             joining
+#==============================================================================
+combined_19_20_res <- sd_2019_res %>% 
+                  left_join(s20_cum_av_res,by=c("id","industry"))
+
+# Creating a dummy of risky versys safe
+quantile(combined_19_20_res$sd)
+combined_19_20_res <- combined_19_20_res %>%
+                  mutate(risky=ifelse(sd> 0.46, 1, 0))
+
+
+# Test of means   risky versus safe
+case1_res <- t.test(combined_19_20_res$cm_ab_res~combined_19_20_res$risky)
+
+# Table to store the t-test results
+test_results_res1 <- data.frame(
+                    Variable = "cumulative abnormal Returns-Residuals",
+                    Category = "risky vs safe",
+                    t_stat   = case1_res$statistic,
+                    p_value  = case1_res$p.value,
+                    Mean_Risky = mean(combined_19_20_res$cm_ab_res[
+                    combined_19_20_res$risky == 1], na.rm = TRUE),
+                    Mean_Safe  = mean(combined_19_20_res$cm_ab_res[
+                   combined_19_20_res$risky == 0], na.rm = TRUE))
+
+
+# Using kable to print the output
+kable(test_results_res1, format = "html") %>%
+  kable_styling()
+
+
+# Histogram of the variable used in T-test with custom fill scale
+# I want to create a label instead of using zero and one
+fill_color <- scale_fill_manual(values = c("1" = "red", "0" = "blue"),
+                                labels = c("1" = "risky", "0" = "safe"))
+
+ggplot(combined_19_20_res, aes(x = industry, y = cm_ab_res, fill = factor(risky))) +
+              geom_bar(stat = "identity") +
+              facet_wrap(~factor(risky)) +
+              labs(x = "industry", y = "Cumulative Abnormal Returns", 
+              title = "Cumulative Abnormal Returns of Risky and Safe Industries in 2020") +
+              fill_color +
+              theme(plot.title = element_text(hjust = 0.5))
+
+
+
+#                        2020 Standard Deviations
+# Repeating the process by comparing 2020 standard deviation to 2021 cumulative 
+# abnormal returns
+sd_2020_res <- residuals_df %>%
+                 filter(Year==2020) %>%
+                 select(Date,industry, sd) %>% 
+                 group_by(industry) %>% 
+                 mutate(id =row_number())
+
+# Similarly, I am filtering the data frame to only 2020 
+s21_cum_av_res <- residuals_df %>%
+                  filter(Year ==2021) %>%
+                  select(-sd,-Date) %>% 
+                  group_by(industry) %>% 
+                  mutate(id = row_number())
+
+# Joining the data frame for 2020 sd versus 2021 cumulative abnormal returns
+combined_20_21_res <- sd_2020_res %>% 
+                      left_join(s21_cum_av_res,by=c("id","industry"))
+
+quantile(combined_20_21_res$sd)
+combined_20_21_res <- combined_20_21_res %>%
+                  mutate(risky=ifelse(sd> 0.65, 1, 0))
+
+
+# Test of means   risky versus safe
+case2_res <- t.test(combined_20_21_res$cm_ab_res~combined_20_21_res$risky)
+
+# Table to store the t-test results
+test_results2_res <- data.frame(
+  Variable = "cumulative abnormal Returns",
+  Category = "risky vs safe",
+  t_stat = case2_res$statistic,
+  p_value = case2_res$p.value,
+  Mean_Risky = mean(combined_20_21_res$cm_ab_res[combined_20_21_res$risky == 1], na.rm = TRUE),
+  Mean_Safe = mean(combined_20_21_res$cm_ab_res[combined_20_21_res$risky == 0], na.rm = TRUE))
+
+
+# Let me combined the two tail t-test results
+test_combined_res <- rbind(test_results_res1, test_results2_res) %>% 
+                     mutate(Year=c(2020,2021))
+
+# Using kable to print the output
+kbl(test_combined_res, digits = 3) %>% 
+  kable_styling(bootstrap_options = "striped") %>% 
+  add_header_above(c(" " = 1,"Table 2: Two tail test 
+  for Cumulative Abnormal Returns: Risky vs. Safe Industries" = ncol(test_combined_res)))
+
+
+# Histogram of the variable used in T-test with custom fill scale
+# I want to create a label instead of using zero and one
+fill_color <- scale_fill_manual(values = c("1" = "red", "0" = "blue"),
+                  labels = c("1" = "risky", "0" = "safe"))
+
+ggplot(combined_20_21_res, aes(x = industry, y = cm_ab_res, fill = factor(risky))) +
+                geom_bar(stat = "identity") +
+                facet_wrap(~factor(risky)) +
+                labs(x = "industry", y = "Cumulative Abnormal Returns", 
+                title = "Cumulative Abnormal Returns of Risky and Safe Industries in 2021") +
+                fill_color +
+                theme(plot.title = element_text(hjust = 0.5))
+
+
+

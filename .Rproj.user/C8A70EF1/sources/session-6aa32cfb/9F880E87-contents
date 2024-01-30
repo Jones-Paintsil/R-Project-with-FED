@@ -1,0 +1,101 @@
+--------------------------------------------------------------------------------
+#                                  Project 1
+# Name: Jones Arkoh Paintsil
+# Date: 09/09/2023
+# ECON181/ECOG315
+#-------------------------------------------------------------------------------
+
+
+#Install useful packages for the project
+install.packages("readr")
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("lubridate")
+install.packages("tseries")
+install.packages("tibbletime")
+
+#Loading packages
+library(readr)
+library(tidyverse)
+library(dplyr)
+library(tseries)
+library(tibbletime)
+
+
+# Importing the daily average value-weighted returns
+industry_portfolios <- read_csv("industry_portfolios_daily.csv", 
+                                           col_types = cols(Date = col_date(format = "%m/%d/%Y")))
+attach(industry_portfolios)
+View(industry_portfolios)
+str(industry_portfolios)
+head(industry_portfolios)
+tail(industry_portfolios)
+
+
+# importing the market returns portfolio
+F_F_Research_Data_5 <- read_csv("F_F_Research_Data_5_Factors_2x3_daily.CSV",  
+                                col_types = cols(Date = col_date(format = "%m/%d/%Y")))
+View(F_F_Research_Data_5)  
+str(F_F_Research_Data_5)
+
+
+# Joining the two data frame. Its obvious that the date should be the key
+# checking the uniqueness of Key
+
+# daily average portfolio
+industry_portfolios %>%
+  count(Date) %>%
+  filter(n>1)
+# Checking NA
+industry_portfolios %>%
+  filter(is.na(Date))
+
+# Market portfolio
+F_F_Research_Data_5 %>%
+  count(Date) %>%
+  filter(n>1)
+# Checking NA
+F_F_Research_Data_5 %>%
+  filter(is.na(Date))
+
+
+#             Joining the daily average returns and market returns
+project_df <- industry_portfolios %>% left_join(F_F_Research_Data_5) 
+str(project_df)
+attach(project_df)
+
+# plotting a variable on both side to see if the data is quite okay
+ggplot(data =project_df, aes(x=Date , y=NoDur) )             +
+  ylab('Daily returns on 12 industry portfolios')                                 +
+  geom_path(aes(y=NoDur),linewidth=0.5, alpha=.8,na.rm = TRUE)   +
+  theme(legend.position=c(.1,.05) )
+
+ggplot(data =project_df, aes(x=Date , y=`Mkt-RF`) )             +
+  ylab('Market portfolios')                                 +
+  geom_path(aes(y=`Mkt-RF`),linewidth=0.5, alpha=.8,na.rm = TRUE)   +
+  theme(legend.position=c(.1,.05) )
+
+
+# Extracting portfolios to 2019-2021
+project_df <- as_tbl_time(project_df, index = Date)
+daily_market_returns  <- filter_time(project_df, time_formula = '2019-01-01' ~ '2021-12-31')
+attach(daily_market_returns)
+
+# Plotting the NuDur portfolio
+attach(daily_market_returns)
+ggplot() +
+  geom_line(mapping=aes(x=Date , y=NoDur), color="red") +
+  geom_line(mapping=aes(x=Date, y=`Mkt-RF`), color="blue")  
+  
+
+
+averave<- daily_market_returns  %>%
+                 summarize(mean(NoDur), mean(Durbl),mean(Manuf),mean(Enrgy),mean(Chems),
+                           mean(BusEq), mean(Telcm),mean(Utils), mean(Shops),mean(Hlth),
+                           mean(Money),mean(Other))
+                 
+            
+           
+           
+  
+

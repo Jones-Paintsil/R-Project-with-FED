@@ -1,0 +1,269 @@
+--------------------------------------------------------------------------------
+#                                  Project 1
+# Name: Jones Arkoh Paintsil
+# Date: 09/09/2023
+# ECOG315
+#                                   Topic
+#  Pandemic and Stock Returns: The effects of COVID-19 on industry 
+#        profitability and investor attitudes towards risk.
+
+  #-----------------------------------------------------------------------------
+
+#                       Question 1
+# During a pandemic, essential sectors such as healthcare and technology
+# supporting remote work which were in higher demand are likely remaining profitable. 
+# In contrast, non-essential industries like hospitality and travel may suffer 
+# revenue losses due to restrictions and reduced consumer spending. Industries 
+# reliant on global supply chains may experience disruptions, affecting profitability 
+# and stock returns. During a pandemic,investors tend to favor safer assets like 
+# government bonds or gold, causing stock prices across industries to decrease. 
+# Economic uncertainty and investor hesitancy can also disproportionately affect 
+# economically sensitive industries. Central bank policies may also impact industries 
+# differently based on interest rate and liquidity sensitivity and thus may affect
+# investors decisions on the stock market.
+
+#                               Question 2
+# project paths
+#project_path <- "/cm/research2/m1ace00/econ181/fall2023"
+#data_dir     <- paste0(project_path, "/data")
+
+#Install useful packages for the project
+install.packages("readr")
+install.packages("tidyverse")
+install.packages("tibbletime")
+
+library(readr)
+library(tidyverse)
+library(tibbletime)
+library(knitr)
+
+# Importing the daily average value-weighted returns
+industry_portfolios <- read_csv("industry_portfolios_daily.csv",show_col_types = FALSE) %>%
+  
+  # turn date from chr format to date format
+  mutate(Date = as.Date(as.character(Date), format = "%Y%m%d")) %>%
+  #format = "%Y%m%d"                  
+  # make year categorical variable
+  mutate(Year = as.numeric(substr(Date, 1, 4))) %>%
+  
+  # subset to 2019:2021
+  filter(Year >= 2019 & Year <= 2021) 
+
+
+# importing the market returns 
+F_F_Research_Data_5 <- read_csv("F-F_Research_Data_5_Factors_2x3_daily.CSV", 
+                                skip=3,show_col_types = FALSE) %>%
+  
+  # turn date from chr format to date format
+  mutate(Date = as.Date(as.character(Date), format = "%Y%m%d")) %>%
+  
+  # make year categorical variable
+  mutate(Year = as.numeric(substr(Date, 1, 4))) %>%
+  
+  # subset to 2019:2021
+  filter(Year >= 2019 & Year <= 2021) 
+  
+  # generate mkt return
+ # mutate(mkt = `Mkt-RF` + RF) %>%
+  
+ # select(Date, mkt)
+
+
+#             Joining the daily average returns and market returns
+project_df <- industry_portfolios %>% left_join(F_F_Research_Data_5,by="Date")
+
+#-------------------------------------------------------------------------------
+#                           Pivot longer
+#-------------------------------------------------------------------------------
+# pivot longer and compute cumulative returns
+project_long <- project_df %>%
+  
+                pivot_longer(cols = NoDur:Other, ) %>%
+                mutate(Year = as.numeric(substr(Date, 1, 4))) %>% 
+                # clean up
+                rename(industry = name) %>%
+                arrange(industry)       %>%
+                rename(average_returns =value) 
+
+#-------------------------------------------------------------------------------
+#                           Question 2
+#                           Cumulative Returns
+#-------------------------------------------------------------------------------
+#                             
+attach(project_long)
+project_long <- project_long %>%
+                      group_by(industry) %>%
+                      mutate(cum_average=cumsum(average_returns)) 
+
+#                 visualization of the cumulative average returns
+ggplot(data=project_long, aes(Date, cum_average, group=industry,
+                          color=industry)) + geom_line() + 
+                          labs(x = "Years", y = "Cumulative returns")
+
+# We can see from the graph that at the beginning of 2020 BusEq, Durbl,NoDur, Other,
+# shop, money were doing pretty well but by the end of 2020, Durbl performed the most,
+# followed by BusEq and shops.
+
+#-------------------------------------------------------------------------------
+#                             Abnormal Returns
+#-------------------------------------------------------------------------------
+project_long <- project_long %>%
+                group_by(industry) %>%
+                mutate(abnorm_returns=average_returns-mkt) %>%
+                mutate(cm_abnorm_returns=cumsum(abnorm_returns))
+#                         Test of Means
+# For entire industry
+t.test(average_returns-mkt) #Test of means
+
+# For each industry
+t_test_results <- project_long %>%
+  group_by(industry) %>%
+  summarize(t_test_result = list(t.test(average_returns, mkt)))
+    
+# The null hypothesis states that the difference in average daily returns and the 
+# market returns is equal to zero. The alternative hypothesis says the difference is
+# not equal to zero. After comparing the p-values for the entire industry and the individual
+# industry differences (abnormal returns), we fail to reject the null hypothesis 
+# true mean equal zero. We conclude that the difference in daily weighted average portfolio and 
+# the market portfolio (abnormal returns) are not statistically different from each other.
+
+
+#-------------------------------------------------------------------------------
+
+#                           Question 3
+
+#-------------------------------------------------------------------------------
+attach(project_long)
+sdtvs_avreturns <- project_long   %>%
+                      group_by(Year,industry) %>%
+                      summarize(sd=sd(abnorm_returns),
+                      cm_abyr=mean(cm_abnorm_returns)) %>%
+                      arrange(desc(sd))
+                     
+# visualization of the standard deviation by year (1 & 2)
+ggplot(sdtvs_avreturns,aes(x=industry, y=sd, color=industry)) +
+                      geom_point() +
+                      facet_wrap(~Year) +
+                      geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+                      labs(x = "industry", y = "standard devation")
+                      
+
+ggplot(data=sdtvs_avreturns, aes(Year, sd, group=industry,
+                              color=industry)) + geom_point()
+
+# We can see from the first plot that in 2019 the Enrgy industry has the highest standard
+# deviation and thus will have a higher variance. This is followed by the Utils, 
+# the Durbl, Teclcm, NoDur, Chems and Health. In 2020, the Enrgy industry still 
+# had a highest standard deviation, followed by Durbl, Uitls and Money. A quick 
+# observation here is that the money industry had a lower standard deviation
+# in 2019 but became the 4th industry with higher variance in 2020. Generally,
+# in 2020, all industries had standard deviation above the median standard deviation
+# in 2019 which suggest the volatility of the industries during the Covid period. 
+# In 2021, Durbl industry had the highest standard deviation, followed by
+# Enrgy, Utils and Telcm but see that the standard deviation of the industries are 
+# comparably smaller to that of 2020, signifying the change of events after covid.
+
+#-------------------------------------------------------------------------------
+
+#                           Question 4
+
+#-------------------------------------------------------------------------------
+#                 visualization of the cumulative abnormal returns
+ggplot(data=project_long, aes(Date, abnorm_returns, group=industry,
+                              color=industry)) + geom_line() + 
+  labs(x = "Years", y = "Cumulative abnormal returns")
+
+#                                   4a
+attach(sdtvs_avreturns)
+sd_2019 <- sdtvs_avreturns[,c("industry", "sd")] %>%
+            filter(Year==2019)
+
+cm_returns_2020 <- sdtvs_avreturns[,c("industry", "cm_abyr")] %>%
+              filter(Year==2020)
+
+sd_19cm_abreturn_2020 <- sd_2019 %>% left_join(cm_returns_2020)
+
+
+     #              Scatter plots    
+ggplot(sd_19cm_abreturn_2020, aes(x=sd, y=cm_abyr,  color=industry)) +
+              geom_point() +
+              geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+              labs(x = "2019 Standard Deviation", y = "2020 cumulative Abnoral Returns", 
+                 title = "2020 average Abnormal versus 2019 standard devations") +
+                theme_minimal()
+# The first three industries which were risk in 2019 are Energy, Utils and Durbl. 
+# In 2020, we can see that Energy had the lowest cumulative average returns, followed by
+# Utils. Durbl industry, however, performed well despite its being risky in 2019.
+
+#                   4b
+median(sd_2019$sd)
+#0.5374457
+
+project_long <- project_long %>%
+                group_by(Year,industry) %>%
+                mutate(sd=sd(abnorm_returns)) %>%
+                mutate(safe_insutry_sd19=ifelse(sd<=0.5374457, "risky", "safe")) 
+
+# Test of means   risky versus safe
+attach(project_long)
+t.test(cm_abnorm_returns~safe_insutry_sd19)
+
+# Comparing risky industries versus safe industry based on 2019 median standard devation, 
+# we fail to reject the null hypothesis that the difference abnormal returns between 
+# risky and safe industries is zero based on  p-value of 0.000 and conclude that there 
+# is statistically significant difference between risky and safe industries during 
+#the Covid period.
+
+#                 4c
+attach(sdtvs_avreturns)
+sd_2020 <- sdtvs_avreturns[,c("industry", "sd")] %>%
+  filter(Year==2020)
+
+cm_abreturns_2021 <- sdtvs_avreturns[,c("industry", "cm_abyr")] %>%
+                  filter(Year==2021)
+sd_20cm_abreturn_21 <- sd_2020 %>% left_join(cm_abreturns_2021)
+
+#              Scatter plots    
+ggplot(sd_20cm_abreturn_21, aes(x=sd, y=cm_abyr,  color=industry)) +
+  geom_point() +
+  geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+  labs(x = "2020 Standard Deviation", y = "2021 cumulative Average Return", 
+       title = "2021 cumulative Abnormal returns versus 2020 standard devations") +
+  theme_minimal()
+
+
+# We see that industry that had lower standard deviation in 2020, for example, BusEq 
+# had a higher cumulative average returns in 2021 and similarly for industry like shop,
+# health, Manuf. However, the Energy sector with higher standard deviation in 2020
+# had a lower cumulative average returns and similarly for Utils The only exception to
+# this rule is Durbl which had a higher standard deviation and still had a higher 
+# abnormal returns.
+
+
+median(sd_2020$sd)
+#0.8662986
+project_long <- project_long %>%
+                group_by(Year,industry) %>%
+                mutate(sd=sd(abnorm_returns)) %>%
+                mutate(safe_insutry_sd20=ifelse(sd<=0.8662986, "risky", "safe")) 
+
+# Test of means   risky versus safe
+attach(project_long)
+t.test(cm_abnorm_returns~safe_insutry_sd20)
+
+# Comparing risky industries versus safe industry based on 2020 median standard deviation, 
+# we reject the null hypothesis that the difference in cumulative abnormal returns
+#between risky and safe industries is zero based on p-value of 0.000 and conclude that 
+#there was statistically significant difference between risky and safe industries during the Covid period.
+
+
+#                       Question 5
+# The prediction in (1) is consistent with question 2,3, and 4 in that we observe
+# Durables (Cars, TVs, Furniture, Household Appliances) despite being classified
+# as risky, this industry performed well in the phase of the Covid because people
+# consumers demands Tvs and household appliances due to the lock down and also
+# the need to own a car to prevent contracting covid from public transport services.
+# Again, we see that the Manufacturing industry average daily returns and abnormal 
+# returns plenged and this can be attributed to supply changes disruptions.
+
+

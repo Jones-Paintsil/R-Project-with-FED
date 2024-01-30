@@ -1,0 +1,273 @@
+---
+title: "Pandemic and Stock Returns: The effects of COVID-19 on industry profitability and investor attitudes towards risk"
+author: "Jones Paintsil"
+date: "2023-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+
+library(broom)
+library(stargazer)
+library(readr)
+library(tidyverse)
+library(tibbletime)
+library(knitr)
+library(kableExtra)
+library(vtable)
+library(webshot2)
+
+
+
+```
+
+## Introduction
+
+
+
+
+```{r }
+
+# I am using two separate data frame for my project. The first is daily average
+# stock market returns. The second is the returns on the US market portfolio.
+
+# Importing the daily average value-weighted returns
+industry_portfolios <- read_csv("industry_portfolios_daily.csv",show_col_types = FALSE) %>%
+  # turn date from chr format to date format
+  mutate(Date = as.Date(as.character(Date), format = "%Y%m%d")) %>%
+  #format = "%Y%m%d"                  
+  # make year categorical variable
+  mutate(Year = as.numeric(substr(Date, 1, 4))) %>%
+  # subset to 2019:2021
+  filter(Year >= 2019 & Year <= 2021) 
+
+
+# importing the market portfolios
+F_F_Research_Data_5 <- read_csv("F-F_Research_Data_5_Factors_2x3_daily.CSV", 
+                                skip=3,show_col_types = FALSE) %>%
+  # turn date from chr format to date format
+  mutate(Date = as.Date(as.character(Date), format = "%Y%m%d")) %>%
+  # make year categorical variable
+  mutate(Year = as.numeric(substr(Date, 1, 4))) %>%
+  # subset to 2019:2021
+  filter(Year >= 2019 & Year <= 2021) %>% 
+  # I am generating market returns for the US market because I will need this 
+  # variable in computing the abnormal returns for the industries.
+  mutate(mkt = `Mkt-RF` + RF) %>%
+  select(-Year)
+
+
+#           Joining the daily average returns and market returns
+project_df <- industry_portfolios %>% left_join(F_F_Research_Data_5,by="Date")
+
+
+# I am working with 12 industries. Each industry has its daily weighted average
+# returns. Working on it as column variable for each of the 12 industries is tedious
+# and for such reason, I am going to make it longer.
+
+
+# make a subset of the data and make it longer and I am calling it "dat1"
+dat1 <-project_df %>% 
+                  select(Date, Year, NoDur:mkt) %>% 
+                  pivot_longer(cols = NoDur:Other) %>%
+                  rename(industry = name) %>%
+                  arrange(industry) %>% 
+                  rename(average_returns =value) 
+
+# I need to give the industry full names because I will need in the process
+industry_names <- data.frame( industry = c("NoDur", "Durbl", "Manuf", "Enrgy", "Chems", "BusEq", "Telcm", "Utils", "Shops", "Hlth", "Money", "Other"),  
+full_names = c("Non Durable", "Durables", "Manufacturing", "Energy","Chemicals & Apllied product", "Busisness & Equipment", "Telecommunication", "Utilities", "Shops", "Healthcare,Medical Equipment","Finance", "Other"))
+
+dat1 <- dat1 %>% 
+        left_join(industry_names, by =("industry"))
+
+
+
+#--------------------------------------------------------------------------------
+# I need to compute additional variables, for example, the cummulative average
+# returns for each of the industries, abnormal returns etc.
+#-------------------------------------------------------------------------------
+
+dat1  <-  dat1 %>%
+          group_by(industry) %>%
+          mutate(cum_average=cumsum(average_returns)) %>% 
+          mutate(abnorm_returns=average_returns-mkt) %>%
+          mutate(cm_abnorm_returns=cumsum(abnorm_returns)) %>% 
+          mutate(excess_return=(average_returns-RF))
+
+```
+
+
+```{r}
+# Question 2-Plotting the cumulative abnormal returns
+
+ggplot(data=dat1, aes(Date, cm_abnorm_returns, group=industry,
+                          color=industry)) + geom_line() + 
+                          labs(x = "Years", y = "Cumulative returns",
+                            title="Figure1: Cumulative Abnormal Returns")
+```
+
+
+
+
+```{r}
+
+# Conducting one sample two tail test for each of the industries
+t_test_results <- dat1 %>%
+                  group_by(industry) %>%
+                  summarize(t_test_result = 
+                  list(broom::tidy(t.test(average_returns, mkt))))
+
+# Extracting the statistics from the t results
+t_test_results <- t_test_results %>%
+                  mutate(t_test_result = map(t_test_result, 
+                  ~ .x[c("estimate", "conf.low", "conf.high", "p.value")]))
+
+
+# Extracting the results to a table
+t_test_results %>%
+                unnest(t_test_result) %>%
+                select(industry, t_statistic 
+                = "estimate", conf.low, conf.high, p.value) %>%
+  kable(format = "html", escape = FALSE,digits = 3) %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(2:5)  %>% 
+  add_header_above(c(" ", "Table 1: One sample Two Tail T-Test Results for each Industry" = 4))
+
+# Summary statistics for the ungrouped
+summary_ungrouped <- dat1 %>%
+                    group_by(full_names) %>%
+                    summarize(
+                    N = n(),
+          mean = round(mean(cm_abnorm_returns, na.rm = TRUE), 2),
+          Std.Dev = round(sd(cm_abnorm_returns, na.rm = TRUE), 2),
+          Min = round(min(cm_abnorm_returns, na.rm = TRUE), 2),
+          Pctl25 = round(quantile(cm_abnorm_returns, 0.25, na.rm = TRUE), 2),
+          median = round(median(cm_abnorm_returns, na.rm = TRUE), 2),
+          Pctl75 = round(quantile(cm_abnorm_returns, 0.75, na.rm = TRUE), 2),
+          Max = round(max(cm_abnorm_returns, na.rm = TRUE), 2))  
+
+kbl(summary_ungrouped, digits = 1) %>% 
+  kable_styling(bootstrap_options = "striped")  
+
+```
+
+
+
+
+
+
+```{r}
+# Computing the standard deviations
+sd_ab <- dat1  %>%
+                  group_by(Year,industry) %>%
+                  summarize(sd=sd(abnorm_returns), .groups = "drop") %>% 
+                  arrange(desc(sd))
+
+# visualization of the standard deviation by year
+# Points
+ggplot(sd_ab,aes(x=industry, y=sd, color=industry)) +
+            geom_point() +
+            facet_wrap(~Year) +
+            geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+            labs(x = "industry", y = "standard devation")
+
+
+# Bars
+ggplot(sd_ab, aes(x = industry, y = sd, fill = industry)) +
+            geom_bar(stat = "identity") +
+            facet_wrap(~Year) +
+            geom_text(aes(label = industry), vjust = -0.5, hjust = 1) +
+            labs(x = "industry", y = "standard deviation")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+#-------------------------------------------------------------------------------
+# Now, I need to join the standard deviations back to the main data frame and 
+# I am going to call it "dat2"
+#-------------------------------------------------------------------------------
+
+# Joining the standard Deviations
+dat2 <- dat1 %>% 
+  left_join(sd_ab,by=c("Year", "industry"))
+
+
+#                   2019 standard Deviations
+# Let me called it part A; where I am comparing 2019 standard deviations to 2020
+# cumulative abnormal returns. First, I need to filter the standard deviations
+# to 2019. 
+
+sd_2019 <- dat2 %>%
+          filter(Year==2019) %>%
+          select(Date,industry, sd) %>% 
+          group_by(industry) %>% 
+          mutate(id =row_number())
+
+# Similarly, I am filtering the data frame to only 2020 
+s20_cum_av <- dat2 %>%
+              filter(Year ==2020) %>%
+              select(-sd,-Date) %>% 
+              group_by(industry) %>% 
+              mutate(id = row_number())
+
+# I need to join these two data frame. I tried joing it by industry but the 
+# observations became just too many which I suspect something went wrong. Because
+# of that I generated an id, a count for each of the days in 2019/2020 for a 
+# particular industry. I realized that the lenth of days for the 2020 data frame is 
+# longer than that of the 2019 and so to prevent having some few missing observation
+# I matched the 2020 cumulative returns to the 2019 standard deviations.
+
+combined_19_20 <- sd_2019 %>% 
+                  left_join(s20_cum_av,by=c("id","industry"))
+
+
+# Calculating the group variable: risky versus safe. Here, I am generating a 
+# group variable based on the median standard deviations. If a particular industry
+# has a standard deviation above this median value, it is classified as risky, else,
+# is safe.
+
+quantile(combined_19_20$sd)
+combined_19_20 <- combined_19_20 %>%
+                 mutate(risky=ifelse(sd> 0.54, 1, 0))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

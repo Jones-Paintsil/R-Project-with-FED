@@ -1,0 +1,6 @@
+"0","# Question 2-Plotting the cumulative abnormal returns"
+"0",""
+"0","ggplot(data=dat1, aes(Date, cm_abnorm_returns, group=industry,"
+"0","                          color=industry)) + geom_line() + "
+"0","                          labs(x = ""Years"", y = ""Cumulative returns"","
+"0","                            title=""Figure1: Cumulative Abnormal Returns"")"
